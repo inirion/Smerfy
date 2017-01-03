@@ -1,0 +1,9 @@
+﻿  Main.cpp
+c:\users\grzegorz kokoszka\documents\visual studio 2015\projects\smerfy\smerfy\main.cpp(86): warning C4101: 'gray': unreferenced local variable
+c:\users\grzegorz kokoszka\documents\visual studio 2015\projects\smerfy\smerfy\main.cpp(275): warning C4018: '<': signed/unsigned mismatch
+c:\users\grzegorz kokoszka\documents\visual studio 2015\projects\smerfy\smerfy\main.cpp(280): warning C4267: '=': conversion from 'size_t' to 'unsigned char', possible loss of data
+c:\users\grzegorz kokoszka\documents\visual studio 2015\projects\smerfy\smerfy\main.cpp(281): warning C4267: '=': conversion from 'size_t' to 'unsigned char', possible loss of data
+c:\users\grzegorz kokoszka\documents\visual studio 2015\projects\smerfy\smerfy\main.cpp(282): warning C4267: '=': conversion from 'size_t' to 'unsigned char', possible loss of data
+c:\users\grzegorz kokoszka\documents\visual studio 2015\projects\smerfy\smerfy\main.cpp(339): warning C4996: 'swprintf': function has been changed to conform with the ISO C standard, adding an extra character count parameter. To use the traditional Microsoft version, set _CRT_NON_CONFORMING_SWPRINTFS.
+  c:\program files (x86)\windows kits\10\include\10.0.10240.0\ucrt\corecrt_wstdio.h(1820): note: see declaration of 'swprintf'
+  Smerfy.vcxproj -> C:\Users\Grzegorz Kokoszka\Documents\Visual Studio 2015\Projects\Smerfy\Debug\Smerfy.exe

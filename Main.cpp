@@ -1,0 +1,440 @@
+/************************************************************
+* -- NIE USUWAJ TEJ INFORMACJI Z PROGRAMU ---------------- *
+************************************************************
+* -- Program powsta³ na bazie kodu Ÿród³owego ------------ *
+* -- udostêpnionego studentom na potrzeby przedmiotu ----- *
+* -- Programowanie Interfejsu U¿ytkownika ---------------- *
+* -- Copyright (c) 2010 Politechnika Œl¹ska w Gliwicach -- *
+* -- Rados³aw Sokó³, Wydzia³ Elektryczny ----------------- *
+************************************************************/
+
+#include <assert.h>
+#include <windows.h>
+#include <stdio.h>
+#include <exception>
+#include <time.h>
+#include <omp.h>
+#include <vector>
+#include <iostream>
+#include <string>
+
+
+TCHAR NazwaAplikacji[] = TEXT("Przetwarzanie obrazu");
+TCHAR NazwaKlasy[] = TEXT("OKNOGLOWNE");
+
+char *Rysunek = 0;
+char *Filtrowany = 0;
+DWORD RozmiarRysunku = 0;
+unsigned char NrFiltru = 1;
+double CzasFiltrowania = 0.0;
+
+struct RGB { unsigned char B, G, R; };
+
+void filtrSzary(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE);
+void filtrPodkreslenie(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE);
+void filtrRozmycie(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE);
+void filtrProgujacy(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE);
+
+
+inline unsigned int RoundUp4(const unsigned int i)
+{
+	return (i + 3)&(~3);
+}
+
+static void AplikujFiltr()
+{
+	assert(sizeof(RGB) == 3);
+	BITMAPFILEHEADER *bfh = reinterpret_cast<BITMAPFILEHEADER*>(Filtrowany);
+	BITMAPINFO *bi = reinterpret_cast<BITMAPINFO*>(Filtrowany + sizeof(BITMAPFILEHEADER));
+	if ((bi->bmiHeader.biBitCount != 24) && (bi->bmiHeader.biBitCount != 32)) throw std::exception();
+	RGB *Raster = reinterpret_cast<RGB*>(Filtrowany + bfh->bfOffBits);
+	RGB *Punkt = NULL;
+	register int Wiersz, Kolumna;
+	switch (NrFiltru) {
+	case 1:
+		for (Wiersz = 0; Wiersz < bi->bmiHeader.biHeight; ++Wiersz) {
+			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			for (Kolumna = 0; Kolumna < bi->bmiHeader.biWidth; ++Kolumna) {
+				Punkt->R = 0;
+				++Punkt;
+			}
+		}
+		break;
+	case 2:
+		filtrSzary(Punkt, Raster, 0, bi->bmiHeader.biHeight, 0, bi->bmiHeader.biWidth);
+		break;
+	case 3:
+		filtrPodkreslenie(Punkt, Raster, 0, bi->bmiHeader.biHeight, 0, bi->bmiHeader.biWidth);
+		break;
+	case 4:
+		filtrProgujacy(Punkt, Raster, 0, bi->bmiHeader.biHeight, 0, bi->bmiHeader.biWidth);
+		break;
+	case 5:
+		filtrRozmycie(Punkt, Raster, 0, bi->bmiHeader.biHeight, 0, bi->bmiHeader.biWidth);
+		break;
+	case 6:
+#pragma omp parallel for  private(Wiersz, Kolumna,Punkt) shared(bi,Raster) num_threads(4)
+		for (Wiersz = 0; Wiersz < bi->bmiHeader.biHeight; ++Wiersz) {
+			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			for (Kolumna = 0; Kolumna < bi->bmiHeader.biWidth; ++Kolumna) {
+				Punkt->R = 0;
+				++Punkt;
+			}
+		}
+		break;
+	case 7:
+		unsigned char gray;
+#pragma omp parallel for private(Wiersz, Kolumna,Punkt, gray) shared(bi,Raster) num_threads(24) 
+		for (Wiersz = 0; Wiersz < bi->bmiHeader.biHeight; ++Wiersz) {
+			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			for (Kolumna = 0; Kolumna < bi->bmiHeader.biWidth; ++Kolumna) {
+				gray = (Punkt->R + Punkt->G + Punkt->B) / 3;
+				Punkt->R = gray;
+				Punkt->G = gray;
+				Punkt->B = gray;
+				++Punkt;
+			}
+		}
+		break;
+	case 8:
+		//unsigned char max;
+#pragma omp parallel for private(Wiersz, Kolumna,Punkt) shared(bi,Raster) num_threads(4)
+		for (Wiersz = 0; Wiersz < bi->bmiHeader.biHeight; ++Wiersz) {
+			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			for (Kolumna = 0; Kolumna < bi->bmiHeader.biWidth; ++Kolumna) {
+				if (Punkt->R >= Punkt->G && Punkt->R >= Punkt->B) {
+					Punkt->R = 255;
+				}
+				else if (Punkt->B >= Punkt->G && Punkt->B >= Punkt->R) {
+					Punkt->B = 255;
+				}
+				else if (Punkt->G >= Punkt->R && Punkt->G >= Punkt->B) {
+					Punkt->G = 255;
+				}
+				++Punkt;
+			}
+		}
+		break;
+	case 9:
+		unsigned char sum = 0;
+		unsigned char threshold = 136;
+#pragma omp parallel for private(Wiersz, Kolumna,Punkt, sum) shared(bi,Raster) num_threads(4)
+		for (Wiersz = 0; Wiersz < bi->bmiHeader.biHeight; ++Wiersz) {
+			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			for (Kolumna = 0; Kolumna < bi->bmiHeader.biWidth; ++Kolumna) {
+				sum = (Punkt->R + Punkt->G + Punkt->B) / 3;
+				if (sum >= threshold) {
+					Punkt->R = 0;
+					Punkt->G = 0;
+					Punkt->B = 0;
+				}
+				else {
+					Punkt->R = 255;
+					Punkt->G = 255;
+					Punkt->B = 255;
+				}
+				++Punkt;
+			}
+		}
+		break;
+	}
+}
+void filtrSzary(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
+	register int Wiersz, Kolumna;
+	unsigned char gray;
+	for (Wiersz = hS; Wiersz < hE; ++Wiersz) {
+		Punkt = Raster + RoundUp4(Wiersz * wE * sizeof(RGB)) / sizeof(RGB);
+		for (Kolumna = wS; Kolumna < wE; ++Kolumna) {
+			gray = (Punkt->R + Punkt->G + Punkt->B) / 3;
+			Punkt->R = gray;
+			Punkt->G = gray;
+			Punkt->B = gray;
+			++Punkt;
+		}
+	}
+}
+void filtrPodkreslenie(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
+	register int Wiersz, Kolumna;
+	unsigned char max = 0;
+	for (Wiersz = hS; Wiersz < hE; ++Wiersz) {
+		Punkt = Raster + RoundUp4(Wiersz * wE * sizeof(RGB)) / sizeof(RGB);
+		for (Kolumna = wS; Kolumna < wE; ++Kolumna) {
+			if (Punkt->R >= Punkt->G && Punkt->R >= Punkt->B) {
+				Punkt->R = 255;
+			}
+			else if (Punkt->B >= Punkt->G && Punkt->B >= Punkt->R) {
+				Punkt->B = 255;
+			}
+			else if (Punkt->G >= Punkt->R && Punkt->G >= Punkt->B) {
+				Punkt->G = 255;
+			}
+			++Punkt;
+		}
+	}
+}
+
+void filtrProgujacy(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
+	register int Wiersz, Kolumna;
+	unsigned char sum = 0;
+	unsigned char threshold = 136;
+	for (Wiersz = hS; Wiersz < hE; ++Wiersz) {
+		Punkt = Raster + RoundUp4(Wiersz * wE * sizeof(RGB)) / sizeof(RGB);
+		for (Kolumna = wS; Kolumna < wE; ++Kolumna) {
+			sum = (Punkt->R + Punkt->G + Punkt->B) / 3;
+			if (sum >= threshold) {
+				Punkt->R = 0;
+				Punkt->G = 0;
+				Punkt->B = 0;
+			}
+			else {
+				Punkt->R = 255;
+				Punkt->G = 255;
+				Punkt->B = 255;
+			}
+			++Punkt;
+		}
+	}
+}
+
+void filtrRozmycie(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
+	int Wiersz, Kolumna;
+	unsigned int sumaR = 0, sumaG = 0, sumaB = 0;
+	RGB *PunktPlusOne = NULL, *PunktMinusOne = NULL;
+	std::vector<RGB*> sasiady;
+	RGB srednia;
+	int i = 0;
+	for (Wiersz = hS; Wiersz < hE; Wiersz++) {
+		i++;
+		Punkt = Raster + RoundUp4(Wiersz * wE * sizeof(RGB)) / sizeof(RGB);
+		if(Wiersz > 0)
+			PunktMinusOne = Raster + RoundUp4((Wiersz - 1) * wE * sizeof(RGB)) / sizeof(RGB);
+		if(Wiersz < hE)
+			PunktPlusOne = Raster + RoundUp4((Wiersz + 1) * wE * sizeof(RGB)) / sizeof(RGB);
+
+		for (Kolumna = wS; Kolumna < wE; Kolumna++) {
+
+			if (Wiersz > 0 && Kolumna > 0 && Wiersz < hE && Kolumna < wE) {//wnêtrze obrazka bez krawêdzi
+				sasiady.push_back(Punkt+1);
+				sasiady.push_back(Punkt-1);
+				sasiady.push_back(PunktMinusOne+1);
+				sasiady.push_back(PunktMinusOne-1);
+				sasiady.push_back(PunktPlusOne+1);
+				sasiady.push_back(PunktPlusOne-1);
+				sasiady.push_back(PunktPlusOne);
+				sasiady.push_back(PunktMinusOne);
+			}
+			else if (Wiersz == 0 && Kolumna == 0) {//lewy górny róg
+				sasiady.push_back(Punkt+1);
+				sasiady.push_back(PunktPlusOne);
+				sasiady.push_back(PunktPlusOne+1);
+			}
+			else if (Wiersz == hE && Kolumna == wE) {//prawy dolny róg
+				sasiady.push_back(Punkt-1);
+				sasiady.push_back(PunktMinusOne-1);
+				sasiady.push_back(PunktMinusOne);
+			}
+			else if (Wiersz == 0 && Kolumna == wE) {//prawy górny róg
+				sasiady.push_back(Punkt-1);
+				sasiady.push_back(PunktPlusOne);
+				sasiady.push_back(PunktPlusOne-1);
+			}
+			else if (Wiersz == hE && Kolumna == 0) {//lewy dolny róg
+				sasiady.push_back(Punkt+1);
+				sasiady.push_back(PunktMinusOne);
+				sasiady.push_back(PunktMinusOne+1);
+			}
+			else if (Wiersz == 0 && Kolumna > 0 && Kolumna < wE) {//góra przy krawêdzi
+				sasiady.push_back(Punkt + 1);
+				sasiady.push_back(Punkt - 1);
+				sasiady.push_back(PunktPlusOne+1);
+				sasiady.push_back(PunktPlusOne-1);
+				sasiady.push_back(PunktPlusOne);
+			}
+			else if (Wiersz == hE && Kolumna > 0 && Kolumna < wE) {//dó³ przy krawêdzi
+				sasiady.push_back(Punkt-1);
+				sasiady.push_back(Punkt+1);
+				sasiady.push_back(PunktMinusOne-1);
+				sasiady.push_back(PunktMinusOne+1);
+				sasiady.push_back(PunktMinusOne);
+			}
+			else if (Kolumna == 0 && Wiersz > 0 && Wiersz < hE) {//lewa strona przy krawêdzi
+				sasiady.push_back(Punkt+1);
+				sasiady.push_back(PunktMinusOne);
+				sasiady.push_back(PunktMinusOne+1);
+				sasiady.push_back(PunktPlusOne);
+				sasiady.push_back(PunktPlusOne+1);
+			}
+			else if (Kolumna == wE && Wiersz > 0 && Wiersz < hE) {//prawa strona przy krawêdzi
+				sasiady.push_back(Punkt-1);
+				sasiady.push_back(PunktMinusOne);
+				sasiady.push_back(PunktMinusOne-1);
+				sasiady.push_back(PunktPlusOne);
+				sasiady.push_back(PunktPlusOne-1);
+			}
+
+			for (int i = 0; i < sasiady.size(); ++i) {
+				sumaR += sasiady[i]->R;
+				sumaG += sasiady[i]->G;
+				sumaB += sasiady[i]->B;
+			}
+			srednia.R = sumaR / sasiady.size();
+			srednia.G = sumaG / sasiady.size();
+			srednia.B = sumaB / sasiady.size();
+			Punkt->R = srednia.R;
+			Punkt->G = srednia.G;
+			Punkt->B = srednia.B;
+			++Punkt;
+			if(PunktMinusOne != NULL)
+			++PunktMinusOne;
+			if(PunktPlusOne != NULL)
+			++PunktPlusOne;
+			sasiady.clear();
+			sumaR = 0;
+			sumaG = 0;
+			sumaB = 0;
+		}
+			std::wstring row = L"Row: " + std::to_wstring(i) + L"\n";
+			OutputDebugString(row.c_str());
+			if (i == 768) break;
+	}
+}
+
+static void KopiujFiltrowany()
+{
+	if (Filtrowany == 0) Filtrowany = new char[RozmiarRysunku];
+	memcpy(Filtrowany, Rysunek, RozmiarRysunku);
+}
+
+static void Tworz(const HWND Okno)
+{
+	register const HANDLE Plik = CreateFile(TEXT("Obraz.bmp"), GENERIC_READ, FILE_SHARE_READ,
+		NULL, OPEN_EXISTING, 0, NULL);
+	if (Plik == INVALID_HANDLE_VALUE) {
+		MessageBox(Okno, TEXT("B³¹d w trakcie otwierania pliku Obraz.bmp"),
+			NazwaAplikacji, MB_ICONEXCLAMATION | MB_OK);
+		return;
+	}
+	RozmiarRysunku = GetFileSize(Plik, NULL);
+	Rysunek = new char[RozmiarRysunku];
+	DWORD Odczytano;
+	ReadFile(Plik, Rysunek, RozmiarRysunku, &Odczytano, NULL);
+	CloseHandle(Plik);
+	KopiujFiltrowany();
+}
+
+static void Rysuj(const HWND Okno)
+{
+	RECT Rozmiar;
+	TCHAR Tekst[64];
+	PAINTSTRUCT PS;
+	unsigned int dl;
+	GetClientRect(Okno, &Rozmiar);
+	const HDC DC = BeginPaint(Okno, &PS);
+	if (Rysunek != 0) {
+		BITMAPFILEHEADER *bfh = reinterpret_cast<BITMAPFILEHEADER*>(Filtrowany);
+		BITMAPINFO *bi = reinterpret_cast<BITMAPINFO*>(Filtrowany + sizeof(BITMAPFILEHEADER));
+		SetStretchBltMode(DC, HALFTONE);
+		StretchDIBits(DC, 0, 0, Rozmiar.right, Rozmiar.bottom, 0, 0, bi->bmiHeader.biWidth, bi->bmiHeader.biHeight,
+			static_cast<void*>(Filtrowany + bfh->bfOffBits), bi, DIB_RGB_COLORS, SRCCOPY);
+		dl = swprintf(Tekst, TEXT("Czas filtrowania: %.2lf ms"), CzasFiltrowania);
+		TextOut(DC, 5, 5, Tekst, dl);
+	}
+	EndPaint(Okno, &PS);
+}
+
+static void Znak(const HWND Okno, const TCHAR Znak)
+{
+	if (Znak >= TEXT('0') && Znak <= TEXT('9')) {
+		SYSTEMTIME S1, S2;
+		NrFiltru = Znak - TEXT('0');
+		SetWindowText(Okno, TEXT("TRWA FILTROWANIE..."));
+		KopiujFiltrowany();
+		GetSystemTime(&S1);
+		if (NrFiltru > 0 && NrFiltru <= 9)
+			for (unsigned int i = 0; i < 500; ++i) AplikujFiltr();
+		GetSystemTime(&S2);
+		CzasFiltrowania = 3600.0 * (S2.wHour - S1.wHour) + 60.0 * (S2.wMinute - S1.wMinute)
+			+ (S2.wSecond - S1.wSecond) + 0.001 * (S2.wMilliseconds - S1.wMilliseconds);
+		CzasFiltrowania *= 2.0;
+		InvalidateRect(Okno, NULL, FALSE);
+		SetWindowText(Okno, NazwaAplikacji);
+		UpdateWindow(Okno);
+	}
+}
+
+static LRESULT CALLBACK FunkcjaOkienkowa(HWND Okno, UINT Komunikat, WPARAM wParam, LPARAM lParam)
+{
+	switch (Komunikat) {
+	case WM_CREATE:
+		Tworz(Okno);
+		break;
+	case WM_CHAR:
+		Znak(Okno, static_cast<TCHAR>(wParam));
+		break;
+	case WM_PAINT:
+		Rysuj(Okno);
+		break;
+	case WM_DESTROY:
+		delete[] Rysunek;
+		delete[] Filtrowany;
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(Okno, Komunikat, wParam, lParam);
+	}
+	return 0;
+}
+
+static bool RejestrujKlasy()
+{
+	WNDCLASSEX wc;
+	wc.cbSize = sizeof(WNDCLASSEX);
+	wc.cbClsExtra = wc.cbWndExtra = 0;
+	wc.hbrBackground = (HBRUSH)(1 + COLOR_WINDOW);
+	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hInstance = GetModuleHandle(NULL);
+	wc.lpfnWndProc = &FunkcjaOkienkowa;
+	wc.lpszClassName = NazwaKlasy;
+	wc.lpszMenuName = NULL;
+	wc.style = CS_HREDRAW | CS_VREDRAW;
+	return (RegisterClassEx(&wc) != 0);
+}
+
+static void WyrejestrujKlasy()
+{
+	UnregisterClass(NazwaKlasy, GetModuleHandle(NULL));
+}
+
+int WINAPI WinMain(HINSTANCE Instancja, HINSTANCE Poprzednia, LPSTR Parametry, int Widocznosc)
+{
+	// Zarejestruj klasê. Protestuj, je¿eli wyst¹pi³ b³¹d.
+	if (!RejestrujKlasy()) {
+		MessageBox(NULL, TEXT("Nie uda³o siê zarejestrowaæ klasy okna!"),
+			NazwaAplikacji, MB_ICONSTOP | MB_OK);
+		return 1;
+	}
+	// Stwórz g³ówne okno. Równie¿ protestuj, je¿eli wyst¹pi³ b³¹d.
+	HWND GlowneOkno = CreateWindowEx(WS_EX_APPWINDOW | WS_EX_CLIENTEDGE,
+		NazwaKlasy, NazwaAplikacji, WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+		NULL, NULL, Instancja, NULL);
+	if (GlowneOkno == NULL) {
+		MessageBox(NULL, TEXT("Nie uda³o siê stworzyæ g³ównego okna!"),
+			NazwaAplikacji, MB_ICONSTOP | MB_OK);
+		return 2;
+	}
+	// Wyœwietl i uaktualnij nowo stworzone okno.
+	ShowWindow(GlowneOkno, Widocznosc);
+	UpdateWindow(GlowneOkno);
+	// G³ówna pêtla komunikatów w¹tku.
+	MSG Komunikat;
+	while (GetMessage(&Komunikat, NULL, 0, 0) > 0) {
+		TranslateMessage(&Komunikat);
+		DispatchMessage(&Komunikat);
+	}
+	// Zwolnij pamiêæ klas i zakoñcz proces.
+	WyrejestrujKlasy();
+	return static_cast<int>(Komunikat.wParam);
+}

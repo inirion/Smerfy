@@ -1,0 +1,14 @@
+﻿  Main.cpp
+Main.cpp(84): warning C4101: 'gray': unreferenced local variable
+Main.cpp(269): warning C4018: '<': signed/unsigned mismatch
+Main.cpp(275): warning C4267: '=': conversion from 'size_t' to 'unsigned char', possible loss of data
+Main.cpp(276): warning C4267: '=': conversion from 'size_t' to 'unsigned char', possible loss of data
+Main.cpp(277): warning C4267: '=': conversion from 'size_t' to 'unsigned char', possible loss of data
+Main.cpp(331): warning C4996: 'swprintf': function has been changed to conform with the ISO C standard, adding an extra character count parameter. To use the traditional Microsoft version, set _CRT_NON_CONFORMING_SWPRINTFS.
+  C:\Program Files (x86)\Windows Kits\10\Include\10.0.10240.0\ucrt\corecrt_wstdio.h(1820): note: see declaration of 'swprintf'
+  Generating code
+  6 of 106 functions ( 5.7%) were compiled, the rest were copied from previous compilation.
+    4 functions were new in current compilation
+    4 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  Smerfy.vcxproj -> c:\users\grzegorz kokoszka\documents\visual studio 2015\Projects\Smerfy\Release\Smerfy.exe
