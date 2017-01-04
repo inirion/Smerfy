@@ -17,6 +17,7 @@
 #include <vector>
 #include <iostream>
 #include <string>
+#include <conio.h>
 
 
 TCHAR NazwaAplikacji[] = TEXT("Przetwarzanie obrazu");
@@ -51,6 +52,7 @@ static void AplikujFiltr()
 	RGB *Punkt = NULL;
 	register int Wiersz, Kolumna;
 	switch (NrFiltru) {
+		/*
 	case 1:
 		for (Wiersz = 0; Wiersz < bi->bmiHeader.biHeight; ++Wiersz) {
 			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
@@ -60,6 +62,7 @@ static void AplikujFiltr()
 			}
 		}
 		break;
+		*/
 	case 2:
 		filtrSzary(Punkt, Raster, 0, bi->bmiHeader.biHeight, 0, bi->bmiHeader.biWidth);
 		break;
@@ -115,7 +118,7 @@ static void AplikujFiltr()
 			}
 		}
 		break;
-	case 9:
+	case 9: {
 		unsigned char sum = 0;
 		unsigned char threshold = 136;
 #pragma omp parallel for private(Wiersz, Kolumna,Punkt, sum) shared(bi,Raster) num_threads(4)
@@ -136,7 +139,62 @@ static void AplikujFiltr()
 				++Punkt;
 			}
 		}
-		break;
+
+	}
+			break;
+	case 1: {
+		unsigned int sumaR = 0, sumaG = 0, sumaB = 0;
+		RGB *PunktPlusOne = NULL, *PunktMinusOne = NULL;
+		RGB srednia;
+		RGB *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8;
+#pragma omp parallel for private(Wiersz, Kolumna,Punkt,PunktMinusOne,PunktPlusOne,p1,p2,p3,p4,p5,p6,p7,p8,sumaR,sumaG,sumaB,srednia) shared(bi,Raster) num_threads(4)
+		for (Wiersz = 1; Wiersz < bi->bmiHeader.biHeight - 1; Wiersz += 2) {
+			Punkt = Raster + RoundUp4(Wiersz * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			if (Wiersz > 0)
+				PunktMinusOne = Raster + RoundUp4((Wiersz - 1) * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+			if (Wiersz < bi->bmiHeader.biHeight)
+				PunktPlusOne = Raster + RoundUp4((Wiersz + 1) * bi->bmiHeader.biWidth * sizeof(RGB)) / sizeof(RGB);
+
+			for (Kolumna = 1; Kolumna < bi->bmiHeader.biWidth - 1; Kolumna += 2) {
+
+				p1 = Punkt + 1;
+				p2 = Punkt - 1;
+				p3 = PunktMinusOne + 1;
+				p4 = PunktMinusOne - 1;
+				p5 = PunktPlusOne + 1;
+				p6 = PunktPlusOne - 1;
+				p7 = PunktPlusOne;
+				p8 = PunktMinusOne;
+
+				sumaR = (p1->R + p2->R + p3->R + p4->R + p5->R + p6->R + p7->R + p8->R);
+				sumaG = (p1->G + p2->G + p3->G + p4->G + p5->G + p6->G + p7->G + p8->G);
+				sumaB = (p1->B + p2->B + p3->B + p4->B + p5->B + p6->B + p7->B + p8->B);
+
+				srednia.R = sumaR / 8;
+				srednia.G = sumaG / 8;
+				srednia.B = sumaB / 8;
+
+				Punkt->R = srednia.R;
+				Punkt->G = srednia.G;
+				Punkt->B = srednia.B;
+				PunktMinusOne->R = srednia.R;
+				PunktMinusOne->G = srednia.G;
+				PunktMinusOne->B = srednia.B;
+				PunktPlusOne->R = srednia.R;
+				PunktPlusOne->G = srednia.G;
+				PunktPlusOne->B = srednia.B;
+				Punkt += 2;
+				if (PunktMinusOne != NULL)
+					PunktMinusOne += 2;
+				if (PunktPlusOne != NULL)
+					PunktPlusOne += 2;
+				sumaR = 0;
+				sumaG = 0;
+				sumaB = 0;
+			}
+		}
+	}
+			break;
 	}
 }
 void filtrSzary(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
@@ -193,6 +251,7 @@ void filtrProgujacy(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
 			}
 			++Punkt;
 		}
+
 	}
 }
 
@@ -200,102 +259,52 @@ void filtrRozmycie(RGB *Punkt, RGB *Raster, int hS, int hE, int wS, int wE) {
 	int Wiersz, Kolumna;
 	unsigned int sumaR = 0, sumaG = 0, sumaB = 0;
 	RGB *PunktPlusOne = NULL, *PunktMinusOne = NULL;
-	std::vector<RGB*> sasiady;
 	RGB srednia;
-	int i = 0;
-	for (Wiersz = hS; Wiersz < hE; Wiersz++) {
-		i++;
+	RGB *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8;
+	for (Wiersz = hS + 1; Wiersz < hE - 1; Wiersz += 2) {
 		Punkt = Raster + RoundUp4(Wiersz * wE * sizeof(RGB)) / sizeof(RGB);
-		if(Wiersz > 0)
+		if (Wiersz > 0)
 			PunktMinusOne = Raster + RoundUp4((Wiersz - 1) * wE * sizeof(RGB)) / sizeof(RGB);
-		if(Wiersz < hE)
+		if (Wiersz < hE)
 			PunktPlusOne = Raster + RoundUp4((Wiersz + 1) * wE * sizeof(RGB)) / sizeof(RGB);
 
-		for (Kolumna = wS; Kolumna < wE; Kolumna++) {
+		for (Kolumna = wS + 1; Kolumna < wE - 1; Kolumna += 2) {
 
-			if (Wiersz > 0 && Kolumna > 0 && Wiersz < hE && Kolumna < wE) {//wnêtrze obrazka bez krawêdzi
-				sasiady.push_back(Punkt+1);
-				sasiady.push_back(Punkt-1);
-				sasiady.push_back(PunktMinusOne+1);
-				sasiady.push_back(PunktMinusOne-1);
-				sasiady.push_back(PunktPlusOne+1);
-				sasiady.push_back(PunktPlusOne-1);
-				sasiady.push_back(PunktPlusOne);
-				sasiady.push_back(PunktMinusOne);
-			}
-			else if (Wiersz == 0 && Kolumna == 0) {//lewy górny róg
-				sasiady.push_back(Punkt+1);
-				sasiady.push_back(PunktPlusOne);
-				sasiady.push_back(PunktPlusOne+1);
-			}
-			else if (Wiersz == hE && Kolumna == wE) {//prawy dolny róg
-				sasiady.push_back(Punkt-1);
-				sasiady.push_back(PunktMinusOne-1);
-				sasiady.push_back(PunktMinusOne);
-			}
-			else if (Wiersz == 0 && Kolumna == wE) {//prawy górny róg
-				sasiady.push_back(Punkt-1);
-				sasiady.push_back(PunktPlusOne);
-				sasiady.push_back(PunktPlusOne-1);
-			}
-			else if (Wiersz == hE && Kolumna == 0) {//lewy dolny róg
-				sasiady.push_back(Punkt+1);
-				sasiady.push_back(PunktMinusOne);
-				sasiady.push_back(PunktMinusOne+1);
-			}
-			else if (Wiersz == 0 && Kolumna > 0 && Kolumna < wE) {//góra przy krawêdzi
-				sasiady.push_back(Punkt + 1);
-				sasiady.push_back(Punkt - 1);
-				sasiady.push_back(PunktPlusOne+1);
-				sasiady.push_back(PunktPlusOne-1);
-				sasiady.push_back(PunktPlusOne);
-			}
-			else if (Wiersz == hE && Kolumna > 0 && Kolumna < wE) {//dó³ przy krawêdzi
-				sasiady.push_back(Punkt-1);
-				sasiady.push_back(Punkt+1);
-				sasiady.push_back(PunktMinusOne-1);
-				sasiady.push_back(PunktMinusOne+1);
-				sasiady.push_back(PunktMinusOne);
-			}
-			else if (Kolumna == 0 && Wiersz > 0 && Wiersz < hE) {//lewa strona przy krawêdzi
-				sasiady.push_back(Punkt+1);
-				sasiady.push_back(PunktMinusOne);
-				sasiady.push_back(PunktMinusOne+1);
-				sasiady.push_back(PunktPlusOne);
-				sasiady.push_back(PunktPlusOne+1);
-			}
-			else if (Kolumna == wE && Wiersz > 0 && Wiersz < hE) {//prawa strona przy krawêdzi
-				sasiady.push_back(Punkt-1);
-				sasiady.push_back(PunktMinusOne);
-				sasiady.push_back(PunktMinusOne-1);
-				sasiady.push_back(PunktPlusOne);
-				sasiady.push_back(PunktPlusOne-1);
-			}
+			p1 = Punkt + 1;
+			p2 = Punkt - 1;
+			p3 = PunktMinusOne + 1;
+			p4 = PunktMinusOne - 1;
+			p5 = PunktPlusOne + 1;
+			p6 = PunktPlusOne - 1;
+			p7 = PunktPlusOne;
+			p8 = PunktMinusOne;
 
-			for (int i = 0; i < sasiady.size(); ++i) {
-				sumaR += sasiady[i]->R;
-				sumaG += sasiady[i]->G;
-				sumaB += sasiady[i]->B;
-			}
-			srednia.R = sumaR / sasiady.size();
-			srednia.G = sumaG / sasiady.size();
-			srednia.B = sumaB / sasiady.size();
+			sumaR = (p1->R + p2->R + p3->R + p4->R + p5->R + p6->R + p7->R + p8->R);
+			sumaG = (p1->G + p2->G + p3->G + p4->G + p5->G + p6->G + p7->G + p8->G);
+			sumaB = (p1->B + p2->B + p3->B + p4->B + p5->B + p6->B + p7->B + p8->B);
+
+			srednia.R = sumaR / 8;
+			srednia.G = sumaG / 8;
+			srednia.B = sumaB / 8;
+
 			Punkt->R = srednia.R;
 			Punkt->G = srednia.G;
 			Punkt->B = srednia.B;
-			++Punkt;
-			if(PunktMinusOne != NULL)
-			++PunktMinusOne;
-			if(PunktPlusOne != NULL)
-			++PunktPlusOne;
-			sasiady.clear();
+			PunktMinusOne->R = srednia.R;
+			PunktMinusOne->G = srednia.G;
+			PunktMinusOne->B = srednia.B;
+			PunktPlusOne->R = srednia.R;
+			PunktPlusOne->G = srednia.G;
+			PunktPlusOne->B = srednia.B;
+			Punkt += 2;
+			if (PunktMinusOne != NULL)
+				PunktMinusOne += 2;
+			if (PunktPlusOne != NULL)
+				PunktPlusOne += 2;
 			sumaR = 0;
 			sumaG = 0;
 			sumaB = 0;
 		}
-			std::wstring row = L"Row: " + std::to_wstring(i) + L"\n";
-			OutputDebugString(row.c_str());
-			if (i == 768) break;
 	}
 }
 
